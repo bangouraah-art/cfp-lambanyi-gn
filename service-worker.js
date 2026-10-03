@@ -1,91 +1,90 @@
-// ─── EduCFP Lambanyi — Service Worker PWA ──────────────────────────────────
-// !! Incrémentez CACHE_VERSION à chaque déploiement pour forcer la mise à jour
-const CACHE_VERSION = "educfp-v2.1";
+// ─── EduCFP Lambanyi — Service Worker PWA ─────────────────────────────────────
+// Version du cache — incrémentez à chaque mise à jour de l'application
+const CACHE_NAME = "educfp-v1.0";
 
-// Fichiers statiques mis en cache (jamais app.js — toujours frais depuis réseau)
-const STATIC_CACHE = [
+// Fichiers à mettre en cache pour le mode hors-ligne
+const ASSETS_TO_CACHE = [
   "/",
   "/index.html",
+  "/app.js",
   "/manifest.json",
-  "/firebase-layer.js",
   "/icons/icon-192.png",
   "/icons/icon-512.png"
 ];
 
-// Ces fichiers sont TOUJOURS récupérés depuis le réseau (jamais mis en cache)
-const NETWORK_ONLY = [
-  "/app.js",
-  "/api/ia",
-  "firebasestorage",
-  "firebaseio.com",
-  "googleapis.com",
-  "gstatic.com",
-  "anthropic.com"
-];
-
-// ─── INSTALLATION ────────────────────────────────────────────────────────────
+// ─── INSTALLATION — mise en cache des ressources ──────────────────────────────
 self.addEventListener("install", (event) => {
+  console.log("[SW] Installation du service worker EduCFP...");
   event.waitUntil(
-    caches.open(CACHE_VERSION).then((cache) => {
-      return cache.addAll(STATIC_CACHE).catch((err) => {
-        console.warn("[SW] Cache partiel :", err);
+    caches.open(CACHE_NAME).then((cache) => {
+      console.log("[SW] Mise en cache des ressources...");
+      return cache.addAll(ASSETS_TO_CACHE).catch((err) => {
+        console.warn("[SW] Certains fichiers n'ont pas pu être mis en cache :", err);
       });
     })
   );
-  self.skipWaiting(); // activer immédiatement
+  // Forcer l'activation immédiate sans attendre la fermeture des onglets
+  self.skipWaiting();
 });
 
-// ─── ACTIVATION — supprimer les anciens caches ───────────────────────────────
+// ─── ACTIVATION — nettoyage des anciens caches ────────────────────────────────
 self.addEventListener("activate", (event) => {
+  console.log("[SW] Activation du service worker EduCFP...");
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.filter((k) => k !== CACHE_VERSION).map((k) => caches.delete(k))
-      )
-    )
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => {
+            console.log("[SW] Suppression de l'ancien cache :", name);
+            return caches.delete(name);
+          })
+      );
+    })
   );
+  // Prendre le contrôle de toutes les pages immédiatement
   self.clients.claim();
 });
 
-// ─── FETCH — Network First pour app.js, Cache First pour le reste ────────────
+// ─── FETCH — stratégie Cache First (priorité au cache, fallback réseau) ───────
 self.addEventListener("fetch", (event) => {
+  // Ignorer les requêtes non-GET et les requêtes vers d'autres domaines
   if (event.request.method !== "GET") return;
+  if (!event.request.url.startsWith(self.location.origin)) return;
 
-  const url = event.request.url;
-
-  // Toujours réseau pour app.js et les APIs
-  const isNetworkOnly = NETWORK_ONLY.some((p) => url.includes(p));
-  if (isNetworkOnly) {
-    event.respondWith(
-      fetch(event.request).catch(() => {
-        // Hors-ligne : retourner app.js depuis cache si disponible
-        return caches.match(event.request);
-      })
-    );
-    return;
-  }
-
-  // Cache First pour les ressources statiques
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
+    caches.match(event.request).then((cachedResponse) => {
+      // Si trouvé dans le cache, retourner la version cached
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
+      // Sinon, récupérer depuis le réseau et mettre en cache
       return fetch(event.request)
-        .then((response) => {
-          if (!response || response.status !== 200 || response.type !== "basic")
-            return response;
-          const clone = response.clone();
-          caches.open(CACHE_VERSION).then((c) => c.put(event.request, clone));
-          return response;
+        .then((networkResponse) => {
+          // Ne mettre en cache que les réponses valides
+          if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== "basic") {
+            return networkResponse;
+          }
+
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+
+          return networkResponse;
         })
         .catch(() => {
-          if (event.request.destination === "document")
+          // En cas d'erreur réseau, retourner la page d'accueil cachée
+          if (event.request.destination === "document") {
             return caches.match("/index.html");
+          }
         });
     })
   );
 });
 
-// ─── MESSAGE — forcer mise à jour depuis l'app ───────────────────────────────
+// ─── MESSAGE — mise à jour manuelle du cache ──────────────────────────────────
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();

@@ -334,9 +334,8 @@ const INIT = {
 const ADMIN_USER = { id: 99, login: "admin.cfp", password: "Adm!nCFP2025#", role: "admin", nom: "Administrateur Système", poste: "Administrateur", actif: true };
 const SECRETAIRE_USER = { id: 13, login: "secretaire", password: "secr2024", role: "secretaire", nom: "M'mah CONTÉ", poste: "Secrétaire de Centre", actif: true };
 
-// ─── FIREBASE : loadData (lecture initiale synchrone depuis localStorage) ────
-// La vraie lecture Firebase se fait de façon asynchrone dans App() via FB.loadData()
-// Cette version synchrone sert uniquement au premier rendu (cache local).
+// loadData : lecture synchrone localStorage (cache local)
+// La vraie source Firebase est chargée de façon asynchrone dans App()
 function loadData() {
   try {
     const saved = JSON.parse(localStorage.getItem("cfp_v12"));
@@ -439,10 +438,9 @@ function loadData() {
     return saved;
   } catch { return INIT; }
 }
-// saveData → localStorage (cache) + Firebase RTDB (source de vérité)
 function saveData(d) {
   try { localStorage.setItem("cfp_v12", JSON.stringify(d)); } catch {}
-  if (window.FB) window.FB.saveData(d); // écriture Firebase (async, non bloquante)
+  if (window.FB) window.FB.saveData(d);
 }
 
 // ─── UI HELPERS ───────────────────────────────────────────────────────────────
@@ -688,11 +686,9 @@ function Login({ onLogin, users, onInscription, onResetPassword }) {
     setErr("");
     try {
       if (window.FB) {
-        // Connexion via Firebase Auth
         const { profile } = await window.FB.login(login, pw, users);
         onLogin(profile);
       } else {
-        // Fallback local (Firebase non disponible)
         const u = users.find(u => u.login === login && u.password === pw && u.actif);
         if (u) onLogin(u);
         else setErr("Identifiant ou mot de passe incorrect.");
@@ -4915,7 +4911,7 @@ aps.map(a=>`<div style="border-left:4px solid #4299E1;padding:10px 14px;margin-b
   <p>Livret généré le ${new Date().toLocaleDateString("fr-FR")} — CFP de Lambanyi, Conakry, Guinée 🇬🇳</p>
   <p>Document officiel — Ne pas reproduire sans autorisation</p>
 </div>
-<script>window.print();</script>
+<scr"+"ipt>window.print();</"+"script>
 </body></html>`;
     const w = window.open("","_blank","width=900,height=800");
     if (w) { w.document.write(html); w.document.close(); }
@@ -5263,218 +5259,51 @@ function ModIA({ role, userName }) {
   const [loading, setLoading]   = useState(false);
   const bottomRef               = useRef(null);
 
-  // ── Contexte par rôle ────────────────────────────────────────────────────
-  const systemPrompt = {
-    direction:       "Tu es l'assistant du Directeur Général du CFP de Lambanyi, Conakry, Guinée.",
-    directeur_etudes:"Tu es l'assistant pédagogique du Directeur des Études du CFP de Lambanyi.",
-    enseignant:      "Tu es l'assistant pédagogique d'un formateur du CFP de Lambanyi.",
-    charge_stages:   "Tu es l'assistant du Chargé des Stages du CFP de Lambanyi.",
-    charge_finances: "Tu es l'assistant financier du CFP de Lambanyi.",
-    charge_travaux:  "Tu es l'assistant du Chargé de Travaux du CFP de Lambanyi.",
-    conseiller:      "Tu es l'assistant du Conseiller pédagogique du CFP de Lambanyi.",
-    secretaire:      "Tu es l'assistant de la Secrétaire du CFP de Lambanyi.",
-    admin:           "Tu es l'assistant système de l'Administrateur du CFP de Lambanyi.",
-    eleve:           "Tu es un assistant pour un apprenant du CFP de Lambanyi.",
-    parent:          "Tu es un assistant pour un parent d'élève du CFP de Lambanyi.",
-  }[role] || "Tu es un assistant pour le CFP de Lambanyi, Conakry, Guinée.";
-
   useEffect(() => {
     if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // ── Moteur IA local ───────────────────────────────────────────────────────
   function repondreLocalement(question) {
     var q = question.toLowerCase().trim();
-
-    // Salutations
-    if (/^(bonjour|bonsoir|salut|hello|salam|hi)/.test(q))
-      return "Bonjour " + userName + " ! Je suis votre assistant CFP Lambanyi. Comment puis-je vous aider aujourd'hui ?";
-
+    if (/^(bonjour|bonsoir|salut|hello|salam|hi\b)/.test(q))
+      return "Bonjour " + userName + " ! Je suis votre assistant CFP Lambanyi. Comment puis-je vous aider ?";
     if (/merci|thank/.test(q))
       return "Avec plaisir ! N'hésitez pas si vous avez d'autres questions.";
-
     if (/(qui es.tu|tu es quoi|c.est quoi|qu.est.ce que tu)/.test(q))
-      return "Je suis l'assistant intelligent du CFP de Lambanyi. Je peux vous aider sur la pédagogie, la gestion, l'APC, les stages, les finances et bien plus encore.";
-
-    // APC / Pédagogie
-    if (/apc|approche par comp/.test(q))
-      return "L'Approche Par Compétences (APC) organise l'enseignement autour de compétences professionnelles concrètes.
-
-• Chaque module vise une compétence mesurable
-• L'évaluation porte sur des situations de travail réelles
-• L'apprenant est acteur de sa formation
-
-Au CFP Lambanyi, l'APC structure tous les modules de formation technique.";
-
+      return "Je suis l'assistant intelligent du CFP de Lambanyi. Je peux vous aider sur la pédagogie, la gestion, l'APC, les stages, les finances et bien plus.";
+    if (/\bapc\b|approche par comp/.test(q))
+      return "L'Approche Par Compétences (APC) organise l'enseignement autour de compétences professionnelles concrètes.\n\n• Chaque module vise une compétence mesurable\n• L'évaluation porte sur des situations réelles de travail\n• L'apprenant est acteur de sa formation\n\nAu CFP Lambanyi, l'APC structure tous les modules de formation technique.";
     if (/plan.*(leçon|cours|séance)|séquence pédagog/.test(q))
-      return "Structure d'un plan de leçon APC :
-
-1. Titre de la compétence visée
-2. Durée et matériel nécessaire
-3. Mise en situation (contexte professionnel)
-4. Activités d'apprentissage (démonstration → pratique guidée → autonomie)
-5. Critères d'évaluation
-6. Trace écrite / consignes de sécurité
-
-Souhaitez-vous un modèle pour une filière précise ?";
-
+      return "Structure d'un plan de leçon APC :\n\n1. Titre de la compétence visée\n2. Durée et matériel nécessaire\n3. Mise en situation (contexte professionnel)\n4. Activités : démonstration → pratique guidée → autonomie\n5. Critères d'évaluation\n6. Trace écrite / consignes de sécurité";
     if (/évaluation|note|notation|grille/.test(q))
-      return "Types d'évaluation au CFP :
-
-• Évaluation diagnostique : en début de module
-• Évaluation formative : en cours de progression
-• Évaluation sommative : en fin de module (notée)
-
-Les pourcentages par module sont définis dans l'onglet Cours & Plans. Chaque enseignant saisit les notes dans l'onglet Notes.";
-
+      return "Types d'évaluation au CFP :\n\n• Diagnostique : en début de module\n• Formative : en cours de progression\n• Sommative : en fin de module (notée)\n\nLes notes sont saisies dans l'onglet Notes par chaque enseignant.";
     if (/absence|présence|retard/.test(q))
-      return "Gestion des absences au CFP :
-
-• Les absences sont saisies dans l'onglet Absences
-• Un apprenant avec plus de 30% d'absences non justifiées peut être exclu
-• Les justificatifs doivent être remis à la secrétaire sous 48h
-• Le Conseiller est responsable du suivi individuel";
-
-    // Stages
+      return "Gestion des absences au CFP :\n\n• Saisie dans l'onglet Absences\n• Plus de 30% d'absences non justifiées → risque d'exclusion\n• Justificatifs à remettre à la secrétaire sous 48h\n• Le Conseiller assure le suivi individuel";
     if (/stage|entreprise|convention|stagiaire/.test(q))
-      return "Gestion des stages au CFP Lambanyi :
-
-• Les conventions de stage sont gérées par le Chargé des Stages
-• Chaque apprenant effectue un stage en entreprise en fin de formation
-• Le suivi se fait via l'onglet Stages
-• Les entreprises partenaires sont identifiées par filière
-
-Avez-vous une question spécifique sur les conventions ou le suivi ?";
-
-    // Finances / Scolarité
+      return "Stages au CFP Lambanyi :\n\n• Conventions gérées par le Chargé des Stages\n• Suivi dans l'onglet Stages\n• Chaque apprenant effectue un stage en fin de formation\n• Les entreprises partenaires sont identifiées par filière";
     if (/scolarité|frais|paiement|finance|argent|gnf|franc/.test(q))
-      return "Gestion financière du CFP :
-
-• Les scolarités sont suivies par le Chargé des Finances
-• Les bons d'entrée et de sortie sont enregistrés dans l'onglet Finances
-• La tontine du personnel est gérée séparément
-• En cas d'impayé, le Directeur est informé
-
-Consultez l'onglet Finances pour les détails de chaque apprenant.";
-
+      return "Finances du CFP :\n\n• Scolarités suivies par le Chargé des Finances\n• Bons d'entrée/sortie dans l'onglet Finances\n• Tontine du personnel gérée séparément\n• Impayés signalés à la Direction";
     if (/tontine/.test(q))
-      return "La tontine est un système d'épargne rotatif entre le personnel du CFP.
-
-Chaque membre cotise une somme fixe par période. À tour de rôle, chaque participant reçoit la cagnotte totale.
-
-La gestion se fait dans l'onglet Tontine.";
-
-    // Inscriptions
+      return "La tontine est un système d'épargne rotatif entre le personnel.\n\nChaque membre cotise une somme fixe par période. À tour de rôle, chaque participant reçoit la cagnotte totale.\n\nGestion dans l'onglet Tontine.";
     if (/inscription|candidature|dossier|admission/.test(q))
-      return "Processus d'inscription au CFP Lambanyi :
-
-1. Dépôt de candidature (formulaire en ligne ou sur place)
-2. Vérification du dossier par la secrétaire
-3. Validation par le Directeur des Études
-4. Paiement des frais d'inscription
-5. Intégration dans la filière et la classe
-
-Les candidatures sont visibles dans l'onglet Inscriptions.";
-
-    // Filières
+      return "Processus d'inscription au CFP :\n\n1. Dépôt de candidature\n2. Vérification du dossier par la secrétaire\n3. Validation par le Directeur des Études\n4. Paiement des frais d'inscription\n5. Intégration dans la filière";
     if (/filière|spécialité|formation|programme/.test(q))
-      return "Filières disponibles au CFP de Lambanyi :
-
-• Chaudronnerie
-• Électricité bâtiment
-• Mécanique automobile
-• Maçonnerie
-• Menuiserie Ébéniste
-• Menuiserie Métallique
-• Plomberie sanitaire
-
-Chaque filière forme des techniciens qualifiés en 2 ans (CAP/BT).";
-
-    // Emploi du temps
-    if (/emploi.du.temps|planning|horaire|séance/.test(q))
-      return "L'emploi du temps est géré dans l'onglet Emploi du temps.
-
-Le Chargé de Travaux et le Directeur des Études peuvent le modifier.
-
-Il est organisé par filière, classe et module. Chaque séance précise l'enseignant, la salle et la durée.";
-
-    // Documents
+      return "Filières du CFP de Lambanyi :\n\n• Chaudronnerie\n• Électricité bâtiment\n• Mécanique automobile\n• Maçonnerie\n• Menuiserie Ébéniste\n• Menuiserie Métallique\n• Plomberie sanitaire\n\nFormation en 2 ans (CAP/BT).";
+    if (/emploi.du.temps|planning|horaire/.test(q))
+      return "L'emploi du temps est géré dans l'onglet Emploi du temps.\n\nModifiable par le Chargé de Travaux et le Directeur des Études.\nOrganisé par filière, classe et module.";
     if (/document|attestation|certificat|diplôme|livret/.test(q))
-      return "Documents officiels du CFP :
-
-• Attestations de scolarité : générées via l'onglet Documents
-• Livret numérique : notes, absences et stages de chaque apprenant
-• Certificats de stage : signés par le Chargé des Stages
-• Diplômes : délivrés en fin de cycle par la direction
-
-Tous les documents sont archivés dans l'onglet Documents.";
-
-    // Livret
-    if (/livret|bulletin|bilan|progression/.test(q))
-      return "Le Livret Numérique regroupe pour chaque apprenant :
-
-• Ses notes par module et par période
-• Ses absences justifiées et non justifiées
-• Ses informations de stage
-• Une appréciation globale de fin de période
-
-Il est accessible dans l'onglet Livret Numérique.";
-
-    // Messages
+      return "Documents du CFP :\n\n• Attestations de scolarité : onglet Documents\n• Livret numérique : notes, absences et stages\n• Certificats de stage : signés par le Chargé des Stages\n• Diplômes : délivrés en fin de cycle";
     if (/message|communiquer|envoyer|notification/.test(q))
-      return "La messagerie interne du CFP permet de :
-
-• Envoyer des messages à tous les utilisateurs ou à un rôle
-• Recevoir des notifications de la direction
-• Communiquer entre enseignants et conseiller
-
-Accédez à vos messages via l'onglet Messages.";
-
-    // Sécurité / Comptes
+      return "La messagerie interne permet :\n\n• Envoyer des messages à tous ou par rôle\n• Recevoir des notifications de la Direction\n• Communiquer entre enseignants et conseiller\n\nAccès via l'onglet Messages.";
     if (/mot de passe|connexion|compte|identifiant|accès/.test(q))
-      return "Gestion des comptes :
-
-• Seul l'Administrateur et la Direction peuvent créer ou modifier les comptes
-• Chaque utilisateur a un identifiant unique (ex: nom.initiale)
-• En cas d'oubli de mot de passe : contactez l'Administrateur
-• Les élèves et parents ont un accès en lecture seule";
-
-    // Guinée / CFP
+      return "Gestion des comptes :\n\n• Création/modification : Admin et Direction uniquement\n• Identifiant unique par utilisateur (ex: nom.initiale)\n• Oubli de mot de passe : contactez l'Administrateur\n• Élèves et parents : accès lecture seule";
     if (/guinée|conakry|lambanyi|cfp|centre de formation/.test(q))
-      return "Le CFP de Lambanyi est un Centre de Formation Professionnelle situé à Conakry, Guinée.
-
-Il forme des techniciens qualifiés dans plusieurs filières industrielles et du bâtiment.
-
-L'application EduCFP gère l'ensemble de la vie scolaire : apprenants, formateurs, notes, absences, stages, finances et documents.";
-
-    // Questions générales d'aide
+      return "Le CFP de Lambanyi est un Centre de Formation Professionnelle à Conakry, Guinée.\n\nIl forme des techniciens qualifiés dans plusieurs filières industrielles et du bâtiment.\n\nL'application EduCFP gère toute la vie scolaire.";
     if (/aide|comment|que faire|quoi faire|expliqu/.test(q))
-      return "Je peux vous aider sur :
-
-📚 Pédagogie & APC
-📝 Notes et évaluations
-📋 Absences et présences
-🎯 Stages en entreprise
-💰 Finances et scolarités
-✍️ Inscriptions et dossiers
-📂 Documents officiels
-📒 Livret numérique
-👥 Gestion des utilisateurs
-
-Posez votre question précisément et je vous répondrai.";
-
-    // Réponse par défaut
-    return "Je n'ai pas encore la réponse à cette question précise, mais voici ce que je peux faire :
-
-• Répondre sur la pédagogie APC
-• Expliquer les modules de l'application
-• Guider sur les procédures du CFP
-• Aider sur la gestion administrative
-
-Reformullez votre question ou choisissez un sujet parmi ceux-là.";
+      return "Je peux vous aider sur :\n\n📚 Pédagogie & APC\n📝 Notes et évaluations\n📋 Absences et présences\n🎯 Stages en entreprise\n💰 Finances et scolarités\n✍️ Inscriptions\n📂 Documents officiels\n📒 Livret numérique\n👥 Gestion des utilisateurs\n\nPosez votre question précisément.";
+    return "Je n'ai pas encore la réponse exacte à cette question, mais je peux vous aider sur :\n\n• La pédagogie APC\n• Les modules de l'application\n• Les procédures du CFP\n• La gestion administrative\n\nReformullez ou choisissez un sujet.";
   }
 
-  // ── Envoi message ─────────────────────────────────────────────────────────
   async function send() {
     if (!input.trim() || loading) return;
     var userMsg = { role: "user", content: input.trim() };
@@ -5482,11 +5311,7 @@ Reformullez votre question ou choisissez un sujet parmi ceux-là.";
     setMessages(newMessages);
     setInput("");
     setLoading(true);
-
-    // Simuler un délai naturel (200-500ms)
-    var delay = 200 + Math.floor(Math.random() * 300);
-    await new Promise(function(r) { setTimeout(r, delay); });
-
+    await new Promise(function(r) { setTimeout(r, 200 + Math.floor(Math.random() * 300)); });
     var reply = repondreLocalement(userMsg.content);
     setMessages([...newMessages, { role: "assistant", content: reply }]);
     setLoading(false);
@@ -5494,7 +5319,6 @@ Reformullez votre question ou choisissez un sujet parmi ceux-là.";
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"72vh",maxHeight:620,background:"white",borderRadius:14,border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
-      {/* Header */}
       <div style={{background:C.navy,padding:"12px 16px",display:"flex",alignItems:"center",gap:10}}>
         <span style={{fontSize:22}}>🤖</span>
         <div>
@@ -5502,39 +5326,23 @@ Reformullez votre question ou choisissez un sujet parmi ceux-là.";
           <div style={{color:"rgba(255,255,255,0.65)",fontSize:11}}>Bonjour {userName} ! Fonctionne sans internet · Répond instantanément</div>
         </div>
       </div>
-
-      {/* Messages */}
       <div style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:10,background:"#F8FAFC"}}>
         {messages.length === 0 && (
           <div style={{textAlign:"center",color:C.muted,fontSize:12,padding:"20px 16px"}}>
             <div style={{fontSize:36,marginBottom:8}}>💬</div>
-            <div style={{fontWeight:700,color:C.navy,marginBottom:6,fontSize:13}}>Assistant intelligent hors-ligne</div>
-            <div style={{marginBottom:12,lineHeight:1.6}}>Posez vos questions sur la pédagogie, la gestion, les apprenants ou l'application.</div>
+            <div style={{fontWeight:700,color:C.navy,marginBottom:6,fontSize:13}}>Assistant hors-ligne</div>
+            <div style={{marginBottom:12,lineHeight:1.6}}>Posez vos questions sur la pédagogie, la gestion ou l'application.</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center"}}>
-              {["C'est quoi l'APC ?","Comment gérer les absences ?","Les filières du CFP","Processus d'inscription","Gestion des stages"].map(function(s) {
-                return (
-                  <button key={s} onClick={function(){setInput(s);}} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:16,padding:"5px 11px",fontSize:11,color:C.navy,cursor:"pointer",fontWeight:600}}>
-                    {s}
-                  </button>
-                );
+              {["C'est quoi l'APC ?","Gérer les absences","Les filières du CFP","Processus d'inscription","Gestion des stages"].map(function(s){
+                return <button key={s} onClick={function(){setInput(s);}} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:16,padding:"5px 11px",fontSize:11,color:C.navy,cursor:"pointer",fontWeight:600}}>{s}</button>;
               })}
             </div>
           </div>
         )}
-        {messages.map(function(m, i) {
+        {messages.map(function(m, i){
           return (
             <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start"}}>
-              <div style={{
-                maxWidth:"82%",padding:"10px 14px",borderRadius:12,
-                background:m.role==="user"?C.navy:"white",
-                color:m.role==="user"?"white":C.text,
-                fontSize:13,lineHeight:1.55,
-                border:m.role==="assistant"?`1px solid ${C.border}`:"none",
-                boxShadow:"0 1px 4px rgba(0,0,0,0.07)",
-                borderBottomRightRadius:m.role==="user"?2:12,
-                borderBottomLeftRadius:m.role==="assistant"?2:12,
-                whiteSpace:"pre-wrap",wordBreak:"break-word",
-              }}>
+              <div style={{maxWidth:"82%",padding:"10px 14px",borderRadius:12,background:m.role==="user"?C.navy:"white",color:m.role==="user"?"white":C.text,fontSize:13,lineHeight:1.55,border:m.role==="assistant"?`1px solid ${C.border}`:"none",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",borderBottomRightRadius:m.role==="user"?2:12,borderBottomLeftRadius:m.role==="assistant"?2:12,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                 {m.content}
               </div>
             </div>
@@ -5551,55 +5359,42 @@ Reformullez votre question ou choisissez un sujet parmi ceux-là.";
         )}
         <div ref={bottomRef} />
       </div>
-
-      {/* Input */}
       <div style={{padding:"10px 12px",borderTop:`1px solid ${C.border}`,background:"white",display:"flex",gap:8,alignItems:"center"}}>
-        <input
-          value={input}
-          onChange={function(e){setInput(e.target.value);}}
-          onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}}
-          placeholder="Posez votre question..."
-          disabled={loading}
-          style={{flex:1,padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",color:C.text,outline:"none",boxSizing:"border-box"}}
-        />
-        <button onClick={send} disabled={loading||!input.trim()}
-          style={{background:C.navy,color:"white",border:"none",borderRadius:9,padding:"9px 16px",fontSize:16,cursor:loading||!input.trim()?"not-allowed":"pointer",opacity:loading||!input.trim()?0.5:1}}>
-          ➤
-        </button>
+        <input value={input} onChange={function(e){setInput(e.target.value);}} onKeyDown={function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}}} placeholder="Posez votre question..." disabled={loading} style={{flex:1,padding:"9px 12px",borderRadius:9,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",color:C.text,outline:"none",boxSizing:"border-box"}} />
+        <button onClick={send} disabled={loading||!input.trim()} style={{background:C.navy,color:"white",border:"none",borderRadius:9,padding:"9px 16px",fontSize:16,cursor:loading||!input.trim()?"not-allowed":"pointer",opacity:loading||!input.trim()?0.5:1}}>➤</button>
       </div>
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// NAVIGATION ANDROID — Bouton Retour
-// Stratégie : chaque espace utilise useTabWithHistory(defaultTab, spaceName).
-// Chaque changement de tab pousse une entrée dans history.pushState.
-// App() écoute popstate et dispatch un événement "cfp:back" vers l'espace actif.
-// Sur l'écran principal (dashboard), double-appui en 2s = quitter.
-// ═══════════════════════════════════════════════════════════════════════════════
 
+// ── Bouton Retour Android — hook de navigation ────────────────────────────────
 function useTabWithHistory(defaultTab, spaceName) {
   const [tab, setTabRaw] = useState(defaultTab);
+  const tabRef = useRef(defaultTab);
+  tabRef.current = tab;
 
-  // Chaque changement de tab → pushState dans history
-  function setTab(newTab) {
-    if (newTab === tab) return;
-    window.history.pushState({ space: spaceName, tab: newTab }, "", window.location.pathname);
-    setTabRaw(newTab);
-  }
-
-  // Écouter l'événement "cfp:back:<space>" émis par le gestionnaire popstate de App()
   useEffect(() => {
+    window.history.replaceState(
+      { space: spaceName, tab: defaultTab }, "", window.location.pathname
+    );
     function handler(e) {
       var prev = (e.detail && e.detail.tab) ? e.detail.tab : defaultTab;
       setTabRaw(prev);
+      tabRef.current = prev;
     }
     window.addEventListener("cfp:back:" + spaceName, handler);
-    // Initialiser history.state au montage
-    window.history.replaceState({ space: spaceName, tab: tab }, "", window.location.pathname);
     return function() { window.removeEventListener("cfp:back:" + spaceName, handler); };
   }, []); // eslint-disable-line
+
+  function setTab(newTab) {
+    if (newTab === tabRef.current) return;
+    window.history.pushState(
+      { space: spaceName, tab: newTab }, "", window.location.pathname
+    );
+    tabRef.current = newTab;
+    setTabRaw(newTab);
+  }
 
   return [tab, setTab];
 }
@@ -6195,53 +5990,84 @@ function App() {
   const [user, setUser] = useState(null);
   const [showInscription, setShowInscription] = useState(false);
   const [fbReady, setFbReady] = useState(!window.FB);
+  const [showExitToast, setShowExitToast] = useState(false);
 
   // Chargement initial Firebase + abonnement temps réel
   useEffect(() => {
-    if (!window.FB) {
-      setFbReady(true);
-      return;
-    }
-
+    if (!window.FB) { setFbReady(true); return; }
     let unsubscribe = null;
     let cancelled = false;
-
     window.FB.loadData()
       .then(d => {
         if (cancelled) return;
-
         if (d) {
           setDataRaw(d);
-          try {
-            localStorage.setItem("cfp_v12", JSON.stringify(d));
-          } catch {}
+          try { localStorage.setItem("cfp_v12", JSON.stringify(d)); } catch {}
         }
-
         unsubscribe = window.FB.initSync(newData => {
           if (!cancelled && newData) {
             setDataRaw(newData);
-            try {
-              localStorage.setItem("cfp_v12", JSON.stringify(newData));
-            } catch {}
+            try { localStorage.setItem("cfp_v12", JSON.stringify(newData)); } catch {}
           }
         });
-
         setFbReady(true);
       })
       .catch(e => {
         console.warn("Firebase loadData échoué — mode local", e);
         if (!cancelled) setFbReady(true);
       });
-
     return () => {
       cancelled = true;
       if (typeof unsubscribe === "function") unsubscribe();
     };
   }, []);
 
+  // ── Bouton Retour Android ─────────────────────────────────────────────────
+  useEffect(() => {
+    var spaceMap = {
+      direction:"direction", directeur_etudes:"staff", charge_stages:"staff",
+      charge_travaux:"staff", charge_finances:"staff", conseiller:"staff",
+      secretaire:"staff", enseignant:"staff", eleve:"eleve", parent:"parent", admin:"admin",
+    };
+    var backPressedAt = 0;
+    var toastTimeout  = null;
+
+    function onPopState(e) {
+      var st = e.state;
+      var space = user ? spaceMap[user.role] : null;
+
+      if (!st || !st.tab) {
+        var now = Date.now();
+        if (now - backPressedAt < 2000) {
+          clearTimeout(toastTimeout);
+          setShowExitToast(false);
+          window.history.go(-1);
+          return;
+        }
+        backPressedAt = now;
+        setShowExitToast(true);
+        toastTimeout = setTimeout(function() {
+          backPressedAt = 0;
+          setShowExitToast(false);
+        }, 2000);
+        window.history.pushState({ space: space, tab: st && st.tab ? st.tab : "dashboard" }, "", window.location.pathname);
+        return;
+      }
+      if (space) {
+        window.dispatchEvent(new CustomEvent("cfp:back:" + space, { detail: { tab: st.tab } }));
+      }
+    }
+
+    window.addEventListener("popstate", onPopState);
+    return function() {
+      window.removeEventListener("popstate", onPopState);
+      clearTimeout(toastTimeout);
+    };
+  }, [user]);
+
   const setData = d => { setDataRaw(d); saveData(d); };
 
-  // ── Écran de chargement Firebase ─────────────────────────────────────────
+  // Écran de chargement Firebase
   if (!fbReady) return (
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:`linear-gradient(135deg,${C.navy} 0%,#2C5282 100%)`,gap:18}}>
       <img src={`data:image/png;base64,${LOGO_B64}`} alt="CFP Lambanyi" style={{height:100,borderRadius:12,boxShadow:"0 8px 30px rgba(0,0,0,0.3)"}} />
@@ -6255,89 +6081,16 @@ function App() {
 
   if (showInscription) return <InscriptionPublique data={data} setData={setData} onBack={()=>setShowInscription(false)} />;
   if (!user) return <Login onLogin={setUser} users={data.users} onInscription={()=>setShowInscription(true)} onResetPassword={(id, newPw) => setData({...data, users: data.users.map(u => u.id===id ? {...u, password:newPw} : u)})} />;
-  if (user.role === "admin") return <EspaceAdmin data={data} setData={setData} onLogout={()=>setUser(null)} />;
+  if (user.role === "admin") return <EspaceAdmin data={data} setData={setData} onLogout={()=>{ if(window.FB) window.FB.logout(); setUser(null); }} />;
 
-  window.__cfpLogout = () => {
-    if (window.FB) window.FB.logout();
-    setUser(null);
-  };
-  // SyncBadge accessible depuis tous les espaces
-  window.SyncBadge = window.FB ? window.FB.SyncBadge : null;
-
-  // ── Bouton Retour Android ──────────────────────────────────────────────────
-  // Géré via popstate : chaque changement de tab a été pushé dans history.
-  // On dispatch l'événement "cfp:back:<space>" vers l'espace actif.
-  useEffect(() => {
-    // Entrée initiale dans history (sinon le premier popstate n'a pas d'état précédent)
-    const spaceMap = {
-      direction: "direction", directeur_etudes: "staff", charge_stages: "staff",
-      charge_travaux: "staff", charge_finances: "staff", conseiller: "staff",
-      secretaire: "staff", enseignant: "staff",
-      eleve: "eleve", parent: "parent", admin: "admin",
-    };
-
-    let backPressedAt = 0; // timestamp du premier appui retour sur dashboard
-    let toastTimeout  = null;
-
-    const onPopState = (e) => {
-      const st = e.state;
-      // Pas d'état → on est revenu avant l'entrée initiale = écran principal
-      const space = user ? spaceMap[user.role] : null;
-
-      if (!st || !st.tab) {
-        // On est sur l'écran principal (dashboard / premier tab)
-        const now = Date.now();
-        if (now - backPressedAt < 2000) {
-          // Deuxième appui en moins de 2s → quitter
-          clearTimeout(toastTimeout);
-          window.__cfpHideExitToast && window.__cfpHideExitToast();
-          window.history.go(-1); // laisse le navigateur/Android fermer l'app
-          return;
-        }
-        // Premier appui → afficher le toast "Appuyez encore pour quitter"
-        backPressedAt = now;
-        window.__cfpShowExitToast && window.__cfpShowExitToast();
-        toastTimeout = setTimeout(() => {
-          backPressedAt = 0;
-          window.__cfpHideExitToast && window.__cfpHideExitToast();
-        }, 2000);
-        // Re-pousser l'état pour que le prochain popstate soit capturé
-        window.history.pushState({ space, tab: st?.tab || "dashboard" }, "", window.location.pathname);
-        return;
-      }
-
-      // Il reste des états dans la pile → naviguer en arrière dans l'espace
-      if (space) {
-        window.dispatchEvent(new CustomEvent("cfp:back:" + space, { detail: { tab: st.tab } }));
-      }
-    };
-
-    window.addEventListener("popstate", onPopState);
-    return () => {
-      window.removeEventListener("popstate", onPopState);
-      clearTimeout(toastTimeout);
-    };
-  }, [user]);
+  window.__cfpLogout = () => { if (window.FB) window.FB.logout(); setUser(null); };
 
   const staffRoles = ["directeur_etudes","charge_stages","charge_travaux","charge_finances","conseiller","secretaire"];
 
-  // ── Toast "Appuyez encore pour quitter" ───────────────────────────────────
-  const [showExitToast, setShowExitToast] = useState(false);
-  window.__cfpShowExitToast = () => setShowExitToast(true);
-  window.__cfpHideExitToast = () => setShowExitToast(false);
-
   return (
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Segoe UI',Tahoma,sans-serif",overflowX:"hidden"}}>
-      {/* Toast bouton retour Android */}
       {showExitToast && (
-        <div style={{
-          position:"fixed", bottom:32, left:"50%", transform:"translateX(-50%)",
-          background:"rgba(0,0,0,0.82)", color:"#fff",
-          padding:"12px 24px", borderRadius:24,
-          fontSize:14, fontWeight:600, zIndex:99999,
-          boxShadow:"0 4px 20px rgba(0,0,0,0.4)",
-          pointerEvents:"none", whiteSpace:"nowrap"
-        }}>
+        <div style={{position:"fixed",bottom:32,left:"50%",transform:"translateX(-50%)",background:"rgba(0,0,0,0.82)",color:"#fff",padding:"12px 24px",borderRadius:24,fontSize:14,fontWeight:600,zIndex:99999,boxShadow:"0 4px 20px rgba(0,0,0,0.4)",pointerEvents:"none",whiteSpace:"nowrap"}}>
           Appuyez encore une fois pour quitter
         </div>
       )}
