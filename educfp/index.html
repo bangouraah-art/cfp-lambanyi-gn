@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+  <!-- ─── PWA ─────────────────────────────────────────────── -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#1E3A5F" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="EduCFP" />
+
+  <!-- ─── Icônes Apple (iOS) ──────────────────────────────── -->
+  <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512.png" />
+
+  <!-- ─── SEO & Description ───────────────────────────────── -->
+  <title>EduCFP Lambanyi — Plateforme Scolaire</title>
+  <meta name="description" content="Plateforme scolaire intelligente du Centre de Formation Professionnelle de Lambanyi, Conakry, Guinée." />
+  <meta name="author" content="CFP de Lambanyi" />
+
+  <!-- ─── Styles de base ──────────────────────────────────── -->
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #root {
+      height: 100%;
+      width: 100%;
+      overflow-x: hidden;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    body { background: #1E3A5F; }
+
+    /* Écran de chargement */
+    #loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #1E3A5F 0%, #2C5282 100%);
+      color: white;
+    }
+    #loading .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid rgba(255,255,255,0.2);
+      border-top-color: #D4AF37;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading p { font-size: 14px; opacity: 0.8; }
+
+    /* Bannière mise à jour PWA */
+    #update-banner {
+      display: none;
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1E3A5F;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      font-size: 13px;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    #update-banner button {
+      background: #D4AF37;
+      color: #1E3A5F;
+      border: none;
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Conteneur de l'application React -->
+  <div id="root">
+    <div id="loading">
+      <div class="spinner"></div>
+      <p>Chargement d'EduCFP Lambanyi...</p>
+    </div>
+  </div>
+
+  <!-- Bannière mise à jour (gérée par le SW) -->
+  <div id="update-banner" style="display:none">
+    🔄 Une mise à jour est disponible !
+    <button onclick="updateApp()">Mettre à jour</button>
+  </div>
+
+    <!-- Firebase SDK (avant React) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+  <script src="/firebase-layer.js"></script>
+
+  <!-- ─── React + Babel CDN ─────────────────────────────────── -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+  <!-- ─── Application principale ───────────────────────────── -->
+  <script type="text/babel" src="/app.js"></script>
+
+  <!-- ─── Enregistrement Service Worker PWA ────────────────── -->
+  <script>
+    let swRegistration = null;
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', async () => {
+        try {
+          swRegistration = await navigator.serviceWorker.register('/service-worker.js');
+          console.log('[App] Service Worker enregistré :', swRegistration.scope);
+
+          // Détecter les mises à jour
+          swRegistration.addEventListener('updatefound', () => {
+            const newWorker = swRegistration.installing;
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                // Nouvelle version disponible
+                document.getElementById('update-banner').style.display = 'flex';
+              }
+            });
+          });
+        } catch (err) {
+          console.warn('[App] Échec enregistrement SW :', err);
+        }
+      });
+    }
+
+    function updateApp() {
+      if (swRegistration && swRegistration.waiting) {
+        swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+      window.location.reload();
+    }
+
+    // Masquer le loading quand React est prêt
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        const loading = document.getElementById('loading');
+        if (loading) loading.style.display = 'none';
+      }, 500);
+    });
+  </script>
+
+</body>
+</html>
